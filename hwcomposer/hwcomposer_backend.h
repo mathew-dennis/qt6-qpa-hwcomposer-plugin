@@ -51,6 +51,8 @@
 
 #include <hardware/hardware.h>
 #include <hardware/hwcomposer.h>
+#include <functional>
+#include <QList>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -100,6 +102,8 @@ inline static uint32_t interpreted_version(hw_device_t *hwc_device)
 
 class HwComposerBackend {
 public:
+    using HotplugCallback = std::function<void(uint64_t, bool, bool)>;
+
     // Factory method to get the right hwcomposer backend version
     static HwComposerBackend *create();
     static void destroy(HwComposerBackend *backend);
@@ -107,12 +111,36 @@ public:
     // Public API that needs to be implemented by a versioned backend
     virtual EGLNativeDisplayType display() = 0;
     virtual EGLNativeWindowType createWindow(int width, int height) = 0;
+    virtual EGLNativeWindowType createWindowForDisplay(uint64_t displayId, int width, int height)
+    {
+        return displayId == primaryDisplayId() ? createWindow(width, height) : nullptr;
+    }
     virtual void destroyWindow(EGLNativeWindowType window) = 0;
     virtual void swap(EGLNativeDisplayType display, EGLSurface surface) = 0;
     virtual void sleepDisplay(bool sleep) = 0;
     virtual float refreshRate() = 0;
 
     virtual bool getScreenSizes(int *width, int *height, float *physical_width, float *physical_height) = 0;
+    virtual uint64_t primaryDisplayId() const { return 0; }
+    virtual bool supportsMultipleDisplays() const { return false; }
+    virtual bool getScreenSizesForDisplay(uint64_t displayId, int *width, int *height,
+                                          float *physical_width, float *physical_height)
+    {
+        return displayId == primaryDisplayId()
+            && getScreenSizes(width, height, physical_width, physical_height);
+    }
+    virtual float refreshRateForDisplay(uint64_t displayId)
+    {
+        Q_UNUSED(displayId);
+        return refreshRate();
+    }
+    virtual void setPowerStateForDisplay(uint64_t displayId, bool on)
+    {
+        if (displayId == primaryDisplayId())
+            sleepDisplay(!on);
+    }
+    virtual void setHotplugCallback(HotplugCallback callback) { Q_UNUSED(callback); }
+    virtual QList<uint64_t> connectedDisplayIds() const { return {}; }
 
     virtual bool requestUpdate(QEglFSWindow *) { return false; }
 

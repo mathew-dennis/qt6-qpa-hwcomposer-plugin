@@ -52,6 +52,8 @@
 
 #include <QObject>
 #include <QBasicTimer>
+#include <QHash>
+#include <QSet>
 
 class HwcProcs_v20;
 class QWindow;
@@ -63,11 +65,20 @@ public:
 
     virtual EGLNativeDisplayType display();
     virtual EGLNativeWindowType createWindow(int width, int height);
+    virtual EGLNativeWindowType createWindowForDisplay(uint64_t displayId, int width, int height);
     virtual void destroyWindow(EGLNativeWindowType window);
     virtual void swap(EGLNativeDisplayType display, EGLSurface surface);
     virtual void sleepDisplay(bool sleep);
     virtual float refreshRate();
     virtual bool getScreenSizes(int *width, int *height, float *physical_width, float *physical_height);
+    virtual uint64_t primaryDisplayId() const;
+    virtual bool getScreenSizesForDisplay(uint64_t displayId, int *width, int *height,
+                                          float *physical_width, float *physical_height);
+    virtual bool supportsMultipleDisplays() const { return true; }
+    virtual float refreshRateForDisplay(uint64_t displayId);
+    virtual void setPowerStateForDisplay(uint64_t displayId, bool on);
+    virtual void setHotplugCallback(HotplugCallback callback);
+    virtual QList<uint64_t> connectedDisplayIds() const;
 
     virtual bool requestUpdate(QEglFSWindow *window) Q_DECL_OVERRIDE;
 
@@ -81,9 +92,12 @@ public:
     static int composerSequenceId;
 
 private:
+    hwc2_compat_display_t *displayForId(uint64_t displayId);
     hwc2_compat_device_t* hwc2_device;
     hwc2_compat_display_t* hwc2_primary_display;
-    hwc2_compat_layer_t* hwc2_primary_layer;
+    QHash<uint64_t, hwc2_compat_display_t *> hwc2_displays;
+    QSet<uint64_t> m_connectedDisplays;
+    HotplugCallback m_hotplugCallback;
 
     bool m_displayOff;
     QBasicTimer m_deliverUpdateTimeout;

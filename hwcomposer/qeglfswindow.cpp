@@ -78,7 +78,7 @@ void QEglFSWindow::create()
     setWindowState(Qt::WindowFullScreen);
 
     if (window()->type() == Qt::Desktop) {
-        QRect rect(QPoint(), m_hwc->screenSize());
+        QRect rect = screen()->availableGeometry();
         QPlatformWindow::setGeometry(rect);
         QWindowSystemInterface::handleGeometryChange(window(), rect);
         return;
@@ -104,9 +104,14 @@ void QEglFSWindow::invalidateSurface()
 
 void QEglFSWindow::resetSurface()
 {
-    EGLDisplay display = static_cast<QEglFSScreen *>(screen())->display();
+    QEglFSScreen *eglScreen = static_cast<QEglFSScreen *>(screen());
+    EGLDisplay display = eglScreen->display();
 
-    m_window = m_hwc->createNativeWindow(m_format);
+    m_window = m_hwc->createNativeWindow(m_format, eglScreen->displayId(),
+                                         eglScreen->geometry().size());
+    if (!m_window)
+        qFatal("QPA-HWC: Could not create a native window for display %llu",
+               static_cast<unsigned long long>(eglScreen->displayId()));
     m_surface = eglCreateWindowSurface(display, m_config, m_window, NULL);
     if (m_surface == EGL_NO_SURFACE) {
         EGLint error = eglGetError();
