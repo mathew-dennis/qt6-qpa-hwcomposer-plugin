@@ -305,11 +305,11 @@ HwComposerBackend_v20::createWindowForDisplay(uint64_t displayId, int width, int
 {
     hwc2_compat_display_t *display = displayForId(displayId);
     if (!display)
-        return nullptr;
+        return EGLNativeWindowType{};
 
     hwc2_compat_layer_t *layer = hwc2_compat_display_create_layer(display);
     if (!layer)
-        return nullptr;
+        return EGLNativeWindowType{};
 
     hwc2_compat_layer_set_composition_type(layer, HWC2_COMPOSITION_CLIENT);
     hwc2_compat_layer_set_blend_mode(layer, HWC2_BLEND_MODE_NONE);

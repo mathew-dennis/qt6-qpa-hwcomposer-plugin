@@ -113,7 +113,8 @@ public:
     virtual EGLNativeWindowType createWindow(int width, int height) = 0;
     virtual EGLNativeWindowType createWindowForDisplay(uint64_t displayId, int width, int height)
     {
-        return displayId == primaryDisplayId() ? createWindow(width, height) : nullptr;
+        return displayId == primaryDisplayId()
+            ? createWindow(width, height) : EGLNativeWindowType{};
     }
     virtual void destroyWindow(EGLNativeWindowType window) = 0;
     virtual void swap(EGLNativeDisplayType display, EGLSurface surface) = 0;
