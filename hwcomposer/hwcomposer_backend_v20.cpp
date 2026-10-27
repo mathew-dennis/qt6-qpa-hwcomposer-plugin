@@ -327,7 +327,7 @@ HwComposerBackend_v20::createWindowForDisplay(uint64_t displayId, int width, int
 void
 HwComposerBackend_v20::destroyWindow(EGLNativeWindowType window)
 {
-    delete static_cast<HWC2Window *>(window);
+    delete reinterpret_cast<HWC2Window *>(window);
 }
 
 void
