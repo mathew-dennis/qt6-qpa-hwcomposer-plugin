@@ -222,7 +222,8 @@ HwComposerBackend_v20::HwComposerBackend_v20(hw_module_t *hwc_module, void *libm
     , hwc2_primary_display(NULL)
     , hwc2_primary_layer(NULL)
     , m_displayOff(true)
-{
+{   
+    qDebug("qt6-hwcomposer-plugin: v20 backend init (built %s %s)", __DATE__, __TIME__); 
     procs = new HwcProcs_v20();
     procs->on_vsync_received = hwc2_callback_vsync;
     procs->on_hotplug_received = hwc2_callback_hotplug;
@@ -385,6 +386,7 @@ HwComposerBackend_v20::getScreenSizes(int *width, int *height, float *physical_w
 void HwComposerBackend_v20::timerEvent(QTimerEvent *e)
 {
     if (e->timerId() == m_vsyncTimeout.timerId()) {
+        qDebug("vsync watchdog fired - real vsync IRQ did not arrive within 50ms");
         hwc2_compat_display_set_vsync_enabled(hwc2_primary_display, HWC2_VSYNC_DISABLE);
         m_vsyncTimeout.stop();
         // When waking up, we might get here as a result of requesting vsync events
@@ -401,7 +403,14 @@ void HwComposerBackend_v20::timerEvent(QTimerEvent *e)
 bool HwComposerBackend_v20::event(QEvent *e)
 {
     if (e->type() == QEvent::User) {
-        static int idleTime = qBound(5, qgetenv("QPA_HWC_IDLE_TIME").toInt(), 100);
+        static int idleTime = [] {
+            int ms = qEnvironmentVariableIsSet("QPA_HWC_IDLE_TIME")
+                ? qBound(0, qEnvironmentVariableIntValue("QPA_HWC_IDLE_TIME"), 100)
+                : 5;
+            qDebug("CUTIE_PERF src=qpa ev=idle_time idle_ms=%d env=\"%s\"", ms,
+                   qgetenv("QPA_HWC_IDLE_TIME").constData());
+            return ms;
+        }();
         if (!m_deliverUpdateTimeout.isActive())
             m_deliverUpdateTimeout.start(idleTime, this);
         return true;
