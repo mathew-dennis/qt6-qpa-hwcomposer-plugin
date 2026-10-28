@@ -75,8 +75,35 @@ struct HwcProcs_v20 : public HWC2EventListener
 };
 
 void hwc2_callback_vsync(HWC2EventListener* listener, int32_t /*sequenceId*/,
-                         hwc2_display_t /*display*/, int64_t /*timestamp*/)
+                         hwc2_display_t /*display*/, int64_t timestamp)
 {
+    // Temporary: log how often the HWC really delivers vsync
+    {
+        static qint64 lastTs = 0, windowStart = 0, minDelta = 0, maxDelta = 0;
+        static int events = 0;
+        qint64 ts = timestamp;
+        if (lastTs && ts - lastTs < 50000000LL) {
+            qint64 d = ts - lastTs;
+            if (!minDelta || d < minDelta)
+                minDelta = d;
+            if (d > maxDelta)
+                maxDelta = d;
+        }
+        lastTs = ts;
+        if (!windowStart)
+            windowStart = ts;
+        ++events;
+        if (ts - windowStart >= 1000000000LL) {
+            if (events >= 2)
+                qDebug("CUTIE_PERF src=qpa ev=vsync events=%d min_ms=%.2f max_ms=%.2f",
+                       events, minDelta / 1e6, maxDelta / 1e6);
+            events = 0;
+            minDelta = 0;
+            maxDelta = 0;
+            windowStart = ts;
+        }
+    }
+
     static int counter = 0;
     ++counter;
     if (counter % 2)
