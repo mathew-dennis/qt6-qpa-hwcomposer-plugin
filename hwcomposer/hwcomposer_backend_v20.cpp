@@ -68,6 +68,23 @@ static qint64 setTime;
 #define QPA_HWC_TIMING_SAMPLE(variable)
 #endif
 
+// Temporary: GUI-thread counters for the vsync -> paint pipeline
+static int s_pipeProcessed = 0, s_pipeFires = 0, s_pipeDelivered = 0, s_pipeRequests = 0;
+static QElapsedTimer s_pipeClock;
+
+static void pipeTick()
+{
+    if (!s_pipeClock.isValid())
+        s_pipeClock.start();
+    if (s_pipeClock.elapsed() >= 1000) {
+        qDebug("CUTIE_PERF src=qpa ev=pipeline vsync_processed=%d timer_fires=%d "
+               "delivered=%d plugin_requests=%d",
+               s_pipeProcessed, s_pipeFires, s_pipeDelivered, s_pipeRequests);
+        s_pipeProcessed = s_pipeFires = s_pipeDelivered = s_pipeRequests = 0;
+        s_pipeClock.restart();
+    }
+}
+
 struct HwcProcs_v20 : public HWC2EventListener
 {
     HwComposerBackend_v20 *backend;
@@ -423,7 +440,9 @@ void HwComposerBackend_v20::timerEvent(QTimerEvent *e)
             handleVSyncEvent();
     } else if (e->timerId() == m_deliverUpdateTimeout.timerId()) {
         m_deliverUpdateTimeout.stop();
+        ++s_pipeFires;
         handleVSyncEvent();
+        pipeTick();
     }
 }
 
@@ -438,6 +457,7 @@ bool HwComposerBackend_v20::event(QEvent *e)
                    qgetenv("QPA_HWC_IDLE_TIME").constData());
             return ms;
         }();
+        ++s_pipeProcessed;
         if (!m_deliverUpdateTimeout.isActive())
             m_deliverUpdateTimeout.start(idleTime, this);
         return true;
@@ -450,6 +470,8 @@ void HwComposerBackend_v20::handleVSyncEvent()
     QSystraceEvent trace("graphics", "QPA::handleVsync");
     QSet<QWindow *> pendingWindows = m_pendingUpdate;
     m_pendingUpdate.clear();
+    if (!pendingWindows.isEmpty())
+        ++s_pipeDelivered;
     foreach (QWindow *w, pendingWindows) {
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 12, 0))
         QPlatformWindow *platformWindow = w->handle();
@@ -470,6 +492,7 @@ bool HwComposerBackend_v20::requestUpdate(QEglFSWindow *window)
     if (m_displayOff)
         return false;
 
+    ++s_pipeRequests;
     if (m_vsyncTimeout.isActive()) {
         m_vsyncTimeout.stop();
     } else {
