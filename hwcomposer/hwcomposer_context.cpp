@@ -196,12 +196,28 @@ EGLNativeWindowType HwComposerContext::createNativeWindow(const QSurfaceFormat &
         HWC_PLUGIN_FATAL("There can only be one window, someone tried to create more.");
     }
 
-    window_created = true;
-    return backend->createWindowForDisplay(displayId, size.width(), size.height());
+    if (m_windowDisplays.contains(displayId)) {
+        qWarning("QPA-HWC: A native window already exists for display %llu, "
+                 "refusing to create a second one",
+                 static_cast<unsigned long long>(displayId));
+        return EGLNativeWindowType{};
+    }
+
+    EGLNativeWindowType window = backend->createWindowForDisplay(displayId, size.width(), size.height());
+    if (window) {
+        window_created = true;
+        m_windowDisplays.insert(displayId);
+        m_windowToDisplay.insert(window, displayId);
+    }
+    return window;
 }
 
 void HwComposerContext::destroyNativeWindow(EGLNativeWindowType window)
 {
+    // Display id 0 is a valid (primary) id, so key off the map itself
+    // rather than testing the value.
+    if (m_windowToDisplay.contains(window))
+        m_windowDisplays.remove(m_windowToDisplay.take(window));
     return backend->destroyWindow(window);
 }
 

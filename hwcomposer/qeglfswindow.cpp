@@ -109,9 +109,15 @@ void QEglFSWindow::resetSurface()
 
     m_window = m_hwc->createNativeWindow(m_format, eglScreen->displayId(),
                                          eglScreen->geometry().size());
-    if (!m_window)
-        qFatal("QPA-HWC: Could not create a native window for display %llu",
-               static_cast<unsigned long long>(eglScreen->displayId()));
+    if (!m_window) {
+        // The display may have been disconnected between the hotplug
+        // notification and window creation. Fail this window gracefully
+        // instead of taking the whole compositor down.
+        qWarning("QPA-HWC: Could not create a native window for display %llu; "
+                 "the screen may have been disconnected",
+                 static_cast<unsigned long long>(eglScreen->displayId()));
+        return;
+    }
     m_surface = eglCreateWindowSurface(display, m_config, m_window, NULL);
     if (m_surface == EGL_NO_SURFACE) {
         EGLint error = eglGetError();

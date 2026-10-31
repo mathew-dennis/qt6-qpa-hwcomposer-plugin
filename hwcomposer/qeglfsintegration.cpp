@@ -173,8 +173,13 @@ QEglFSIntegration::~QEglFSIntegration()
 
 void QEglFSIntegration::addDisplayScreen(uint64_t displayId)
 {
-    if (mScreens.contains(displayId) || !mHwc->hasDisplay(displayId))
+    if (mScreens.contains(displayId))
         return;
+    if (!mHwc->hasDisplay(displayId)) {
+        qWarning("QPA-HWC: display %llu reported connected but has no valid mode; ignoring it",
+                 static_cast<unsigned long long>(displayId));
+        return;
+    }
 
     int nextX = mScreen->geometry().right() + 1;
     for (QEglFSScreen *screen : mScreens)

@@ -53,7 +53,9 @@
 #include <qpa/qplatformscreen.h>
 #include <QtGui/QSurfaceFormat>
 #include <QtGui/QImage>
+#include <QHash>
 #include <QList>
+#include <QSet>
 #include <functional>
 #include <stdint.h>
 #include <EGL/egl.h>
@@ -116,6 +118,8 @@ private:
 
     struct udev *udevInstance;
     int restoreBrightness = 0;
+    QSet<uint64_t> m_windowDisplays;
+    QHash<EGLNativeWindowType, uint64_t> m_windowToDisplay;
 };
 
 QT_END_NAMESPACE
