@@ -44,6 +44,7 @@
 
 #include <qpa/qplatformscreen.h>
 #include <QtCore/QTextStream>
+#include <QPoint>
 
 #include "hwcomposer_context.h"
 
@@ -67,7 +68,8 @@ class QEglFSScreen : public QPlatformScreen //huh: FullScreenScreen ;) just to f
 {
 #endif
 public:
-    QEglFSScreen(HwComposerContext *hwc, EGLDisplay display);
+    QEglFSScreen(HwComposerContext *hwc, EGLDisplay display,
+                 uint64_t displayId = 0, QPoint position = QPoint());
     ~QEglFSScreen();
 
     QRect geometry() const;
@@ -78,6 +80,7 @@ public:
     QDpi logicalDpi() const;
 
     EGLDisplay display() const { return m_dpy; }
+    uint64_t displayId() const { return m_displayId; }
 
     qreal refreshRate() const;
 
@@ -94,6 +97,8 @@ public:
 
 private:
     HwComposerContext *m_hwc;
+    uint64_t m_displayId;
+    QPoint m_position;
     QEglFSPageFlipper *m_pageFlipper;
     EGLDisplay m_dpy;
     PowerState m_powerState;

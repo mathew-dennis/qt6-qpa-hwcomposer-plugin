@@ -53,6 +53,9 @@
 #include <qpa/qplatformscreen.h>
 #include <QtGui/QSurfaceFormat>
 #include <QtGui/QImage>
+#include <QList>
+#include <functional>
+#include <stdint.h>
 #include <EGL/egl.h>
 #include <libudev.h>
 
@@ -80,11 +83,20 @@ public:
     QSizeF physicalScreenSize() const;
     QSize screenSize() const;
     int screenDepth() const;
+    QSizeF physicalScreenSize(uint64_t displayId) const;
+    QSize screenSize(uint64_t displayId) const;
+    qreal refreshRate(uint64_t displayId) const;
+    void setDisplayPowerState(uint64_t displayId, bool on);
+    uint64_t primaryDisplayId() const;
+    bool hasDisplay(uint64_t displayId) const;
+    void setHotplugCallback(std::function<void(uint64_t, bool, bool)> callback);
+    QList<uint64_t> connectedDisplayIds() const;
 
     QSurfaceFormat surfaceFormatFor(const QSurfaceFormat &inputFormat) const;
 
     EGLNativeDisplayType platformDisplay() const;
-    EGLNativeWindowType createNativeWindow(const QSurfaceFormat &format);
+    EGLNativeWindowType createNativeWindow(const QSurfaceFormat &format,
+                                          uint64_t displayId, QSize size);
     void destroyNativeWindow(EGLNativeWindowType window);
 
     void swapToWindow(QEglFSContext *context, QPlatformSurface *surface);
@@ -97,6 +109,7 @@ public:
 private:
     HwComposerScreenInfo *info;
     HwComposerBackend *backend;
+    uint64_t m_primaryDisplayId;
     bool display_off;
     bool window_created;
     qreal fps;

@@ -75,6 +75,7 @@
 #include <QtGui/QOpenGLContext>
 #include <QtGui/QScreen>
 #include <QtGui/QOffscreenSurface>
+#include <qpa/qwindowsysteminterface.h>
 
 #include <qpa/qplatforminputcontextfactory_p.h>
 
@@ -97,6 +98,7 @@ QEglFSIntegration::QEglFSIntegration()
     : mHwc(NULL)
     , mEventDispatcher(createUnixEventDispatcher())
     , mFontDb(new QGenericUnixFontDatabase())
+    , mPrimaryDisplayId(0)
 {
 #if QT_VERSION < QT_VERSION_CHECK(5, 2, 0)
     QGuiApplicationPrivate::instance()->setEventDispatcher(mEventDispatcher);
@@ -122,18 +124,41 @@ QEglFSIntegration::QEglFSIntegration()
         qFatal("EGL error");
     }
 
-    mScreen = new QEglFSScreen(mHwc, mDisplay);
+    mPrimaryDisplayId = mHwc->primaryDisplayId();
+    mScreen = new QEglFSScreen(mHwc, mDisplay, mPrimaryDisplayId);
+    mScreens.insert(mPrimaryDisplayId, static_cast<QEglFSScreen *>(mScreen));
 #if QT_VERSION < QT_VERSION_CHECK(5, 13, 0)
     screenAdded(mScreen);
 #else
     QWindowSystemInterface::handleScreenAdded(mScreen);
 #endif
 
+    mHwc->setHotplugCallback([this](uint64_t displayId, bool connected,
+                                    bool primaryDisplay) {
+        if (primaryDisplay || displayId == mPrimaryDisplayId)
+            return;
+        if (connected)
+            addDisplayScreen(displayId);
+        else
+            removeDisplayScreen(displayId);
+    });
+
+    for (uint64_t displayId : mHwc->connectedDisplayIds()) {
+        if (displayId != mPrimaryDisplayId)
+            addDisplayScreen(displayId);
+    }
+
     mInputContext = QPlatformInputContextFactory::create();
 }
 
 QEglFSIntegration::~QEglFSIntegration()
 {
+    mHwc->setHotplugCallback({});
+    const QList<uint64_t> displayIds = mScreens.keys();
+    for (uint64_t displayId : displayIds) {
+        if (displayId != mPrimaryDisplayId)
+            removeDisplayScreen(displayId);
+    }
 #if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
     QWindowSystemInterface::handleScreenRemoved(mScreen);
 #elif QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)
@@ -144,6 +169,40 @@ QEglFSIntegration::~QEglFSIntegration()
 
     eglTerminate(mDisplay);
     delete mHwc;
+}
+
+void QEglFSIntegration::addDisplayScreen(uint64_t displayId)
+{
+    if (mScreens.contains(displayId) || !mHwc->hasDisplay(displayId))
+        return;
+
+    int nextX = mScreen->geometry().right() + 1;
+    for (QEglFSScreen *screen : mScreens)
+        nextX = qMax(nextX, screen->geometry().right() + 1);
+
+    QEglFSScreen *screen = new QEglFSScreen(mHwc, mDisplay, displayId,
+                                            QPoint(nextX, 0));
+    mScreens.insert(displayId, screen);
+#if QT_VERSION < QT_VERSION_CHECK(5, 13, 0)
+    screenAdded(screen);
+#else
+    QWindowSystemInterface::handleScreenAdded(screen);
+#endif
+}
+
+void QEglFSIntegration::removeDisplayScreen(uint64_t displayId)
+{
+    QEglFSScreen *screen = mScreens.take(displayId);
+    if (!screen)
+        return;
+
+#if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
+    QWindowSystemInterface::handleScreenRemoved(screen);
+#elif QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)
+    destroyScreen(screen);
+#else
+    delete screen;
+#endif
 }
 
 bool QEglFSIntegration::hasCapability(QPlatformIntegration::Capability cap) const

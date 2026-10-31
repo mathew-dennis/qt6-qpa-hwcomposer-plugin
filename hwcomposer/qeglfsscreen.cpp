@@ -56,8 +56,11 @@
 
 QT_BEGIN_NAMESPACE
 
-QEglFSScreen::QEglFSScreen(HwComposerContext *hwc, EGLDisplay dpy)
+QEglFSScreen::QEglFSScreen(HwComposerContext *hwc, EGLDisplay dpy,
+                           uint64_t displayId, QPoint position)
     : m_hwc(hwc)
+    , m_displayId(displayId)
+    , m_position(position)
     , m_dpy(dpy)
 #ifdef WITH_SENSORS
     , m_screenOrientation(Qt::PrimaryOrientation)
@@ -91,7 +94,7 @@ void QEglFSScreen::onStarted()
 
 QRect QEglFSScreen::geometry() const
 {
-    return QRect(QPoint(0, 0), m_hwc->screenSize());
+    return QRect(m_position, m_hwc->screenSize(m_displayId));
 }
 
 int QEglFSScreen::depth() const
@@ -111,13 +114,15 @@ QImage::Format QEglFSScreen::format() const
 
 QSizeF QEglFSScreen::physicalSize() const
 {
-    return m_hwc->physicalScreenSize();
+    return m_hwc->physicalScreenSize(m_displayId);
 }
 
 QDpi QEglFSScreen::logicalDpi() const
 {
-    QSizeF ps = m_hwc->physicalScreenSize();
-    QSize s = m_hwc->screenSize();
+    QSizeF ps = m_hwc->physicalScreenSize(m_displayId);
+    QSize s = m_hwc->screenSize(m_displayId);
+    if (ps.isEmpty())
+        return QDpi(100, 100);
 
     return QDpi(Q_MM_PER_INCH * s.width() / ps.width(),
                 Q_MM_PER_INCH * s.height() / ps.height());
@@ -126,13 +131,13 @@ QDpi QEglFSScreen::logicalDpi() const
 
 qreal QEglFSScreen::refreshRate() const
 {
-    return m_hwc->refreshRate();
+    return m_hwc->refreshRate(m_displayId);
 }
 
 #ifdef WITH_SENSORS
 void QEglFSScreen::orientationReadingChanged()
 {
-    QSize screenSize = m_hwc->screenSize();
+    QSize screenSize = m_hwc->screenSize(m_displayId);
     Qt::ScreenOrientation screenPrimaryOrientation = Qt::PortraitOrientation;
     if (screenSize.width() > screenSize.height()) {
         screenPrimaryOrientation = Qt::LandscapeOrientation;
@@ -175,7 +180,7 @@ QPlatformScreen::PowerState QEglFSScreen::powerState() const
 
 void QEglFSScreen::setPowerState(QPlatformScreen::PowerState state)
 {
-    m_hwc->sleepDisplay(state != PowerStateOn);
+    m_hwc->setDisplayPowerState(m_displayId, state == PowerStateOn);
     m_powerState = state;
 }
 

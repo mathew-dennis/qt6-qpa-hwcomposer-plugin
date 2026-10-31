@@ -44,6 +44,7 @@
 #include "qeglfswindow.h"
 
 #include <string>
+#include <utility>
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QTimerEvent>
 #include <QtCore/QCoreApplication>
@@ -146,9 +147,9 @@ HWC2Window::HWC2Window(unsigned int width, unsigned int height,
 
 HWC2Window::~HWC2Window()
 {
-    if (lastPresentFence != -1) {
+    if (lastPresentFence != -1)
         close(lastPresentFence);
-    }
+    hwc2_compat_display_destroy_layer(hwcDisplay, layer);
 }
 
 void HWC2Window::present(HWComposerNativeWindowBuffer *buffer)
@@ -220,7 +221,6 @@ HwComposerBackend_v20::HwComposerBackend_v20(hw_module_t *hwc_module, void *libm
     : HwComposerBackend(hwc_module, libminisf)
     , hwc2_device(NULL)
     , hwc2_primary_display(NULL)
-    , hwc2_primary_layer(NULL)
     , m_displayOff(true)
 {
     procs = new HwcProcs_v20();
@@ -248,6 +248,8 @@ HwComposerBackend_v20::HwComposerBackend_v20(hw_module_t *hwc_module, void *libm
         usleep(1000);
     }
     HWC_PLUGIN_ASSERT_NOT_NULL(hwc2_primary_display);
+    hwc2_displays.insert(procs->primaryDisplayId, hwc2_primary_display);
+    m_connectedDisplays.insert(procs->primaryDisplayId);
 
     sleepDisplay(false);
 }
@@ -262,9 +264,9 @@ HwComposerBackend_v20::~HwComposerBackend_v20()
     if (!qgetenv("QPA_HWC_WORKAROUNDS").split(',').contains("no-close-hwc"))
         free(hwc2_device);
 
-    if (hwc2_primary_display != NULL) {
-        free(hwc2_primary_display);
-    }
+    for (hwc2_compat_display_t *display : hwc2_displays)
+        free(display);
+    hwc2_displays.clear();
 
     delete procs;
 }
@@ -278,12 +280,19 @@ HwComposerBackend_v20::display()
 EGLNativeWindowType
 HwComposerBackend_v20::createWindow(int width, int height)
 {
-    // We expect that we haven't created a window already, if we had, we
-    // would leak stuff, and we want to avoid that for obvious reasons.
-    HWC_PLUGIN_EXPECT_NULL(hwc2_primary_layer);
+    return createWindowForDisplay(primaryDisplayId(), width, height);
+}
 
-    hwc2_compat_layer_t* layer = hwc2_primary_layer =
-        hwc2_compat_display_create_layer(hwc2_primary_display);
+EGLNativeWindowType
+HwComposerBackend_v20::createWindowForDisplay(uint64_t displayId, int width, int height)
+{
+    hwc2_compat_display_t *display = displayForId(displayId);
+    if (!display)
+        return EGLNativeWindowType{};
+
+    hwc2_compat_layer_t *layer = hwc2_compat_display_create_layer(display);
+    if (!layer)
+        return EGLNativeWindowType{};
 
     hwc2_compat_layer_set_composition_type(layer, HWC2_COMPOSITION_CLIENT);
     hwc2_compat_layer_set_blend_mode(layer, HWC2_BLEND_MODE_NONE);
@@ -293,7 +302,7 @@ HwComposerBackend_v20::createWindow(int width, int height)
 
     HWC2Window *hwc_win = new HWC2Window(width, height,
                                          HAL_PIXEL_FORMAT_RGBA_8888,
-                                         hwc2_primary_display, layer);
+                                         display, layer);
 
     return (EGLNativeWindowType) static_cast<ANativeWindow *>(hwc_win);
 }
@@ -301,7 +310,7 @@ HwComposerBackend_v20::createWindow(int width, int height)
 void
 HwComposerBackend_v20::destroyWindow(EGLNativeWindowType window)
 {
-    Q_UNUSED(window);
+    delete reinterpret_cast<HWC2Window *>(window);
 }
 
 void
@@ -349,37 +358,99 @@ HwComposerBackend_v20::sleepDisplay(bool sleep)
 float
 HwComposerBackend_v20::refreshRate()
 {
-    float value = (float)hwc2_compat_display_get_active_config(hwc2_primary_display)->vsyncPeriod;
-
-    value = (1000000000.0 / value);
-
-    // make sure the value is "reasonable", otherwise fallback to 60.0.
-    return (value > 0 && value <= 1000.0) ? value : 60.0;
+    return refreshRateForDisplay(primaryDisplayId());
 }
 
 bool
 HwComposerBackend_v20::getScreenSizes(int *width, int *height, float *physical_width, float *physical_height)
 {
-    HWC2DisplayConfig *config = hwc2_compat_display_get_active_config(hwc2_primary_display);
+    return getScreenSizesForDisplay(primaryDisplayId(), width, height,
+                                    physical_width, physical_height);
+}
 
-    // should not happen
-    if (!config) return false;
+uint64_t HwComposerBackend_v20::primaryDisplayId() const
+{
+    return procs->primaryDisplayId;
+}
 
-    int dpi_x = config->dpiX;
-    int dpi_y = config->dpiY;
+hwc2_compat_display_t *HwComposerBackend_v20::displayForId(uint64_t displayId)
+{
+    auto it = hwc2_displays.find(displayId);
+    if (it != hwc2_displays.end())
+        return it.value();
+
+    hwc2_compat_display_t *display =
+        hwc2_compat_device_get_display_by_id(hwc2_device, displayId);
+    if (display)
+        hwc2_displays.insert(displayId, display);
+    return display;
+}
+
+bool
+HwComposerBackend_v20::getScreenSizesForDisplay(uint64_t displayId, int *width,
+                                                int *height, float *physical_width,
+                                                float *physical_height)
+{
+    hwc2_compat_display_t *display = displayForId(displayId);
+    HWC2DisplayConfig *config = display
+        ? hwc2_compat_display_get_active_config(display) : nullptr;
+    if (!config)
+        return false;
 
     *width = config->width;
     *height = config->height;
+    const int dpiX = config->dpiX > 0 ? config->dpiX : 100;
+    const int dpiY = config->dpiY > 0 ? config->dpiY : 100;
+    free(config);
 
-    if (dpi_x == 0 || dpi_y == 0 || *width == 0 || *height == 0) {
-        qWarning() << "failed to read screen size from hwc1.x backend";
+    if (*width == 0 || *height == 0) {
+        qWarning() << "failed to read screen size from hwc2 backend";
         return false;
     }
 
-    *physical_width = (((float)*width) * 25.4) / (float)dpi_x;
-    *physical_height = (((float)*height) * 25.4) / (float)dpi_y;
-
+    *physical_width = (((float)*width) * 25.4f) / dpiX;
+    *physical_height = (((float)*height) * 25.4f) / dpiY;
     return true;
+}
+
+float HwComposerBackend_v20::refreshRateForDisplay(uint64_t displayId)
+{
+    hwc2_compat_display_t *display = displayForId(displayId);
+    HWC2DisplayConfig *config = display
+        ? hwc2_compat_display_get_active_config(display) : nullptr;
+    if (!config)
+        return 60.0f;
+
+    const int64_t vsyncPeriod = config->vsyncPeriod;
+    free(config);
+    if (vsyncPeriod <= 0)
+        return 60.0f;
+
+    const float value = 1000000000.0f / vsyncPeriod;
+    return (value > 0 && value <= 1000.0f) ? value : 60.0f;
+}
+
+void HwComposerBackend_v20::setPowerStateForDisplay(uint64_t displayId, bool on)
+{
+    if (displayId == primaryDisplayId()) {
+        sleepDisplay(!on);
+        return;
+    }
+
+    hwc2_compat_display_t *display = displayForId(displayId);
+    if (display)
+        hwc2_compat_display_set_power_mode(
+            display, on ? HWC2_POWER_MODE_ON : HWC2_POWER_MODE_OFF);
+}
+
+void HwComposerBackend_v20::setHotplugCallback(HotplugCallback callback)
+{
+    m_hotplugCallback = std::move(callback);
+}
+
+QList<uint64_t> HwComposerBackend_v20::connectedDisplayIds() const
+{
+    return m_connectedDisplays.values();
 }
 
 void HwComposerBackend_v20::timerEvent(QTimerEvent *e)
@@ -446,9 +517,25 @@ bool HwComposerBackend_v20::requestUpdate(QEglFSWindow *window)
 
 void HwComposerBackend_v20::onHotplugReceived(int32_t /*sequenceId*/,
                                         hwc2_display_t display, bool connected,
-                                        bool /*primaryDisplay*/)
+                                        bool primaryDisplay)
 {
     hwc2_compat_device_on_hotplug(hwc2_device, display, connected);
+    QMetaObject::invokeMethod(this, [this, display, connected, primaryDisplay]() {
+        if (connected) {
+            if (!m_connectedDisplays.contains(display)) {
+                // A reconnect must obtain a fresh wrapper from libhybris.
+                free(hwc2_displays.take(display));
+                hwc2_compat_display_t *wrapped = displayForId(display);
+                if (display == procs->primaryDisplayId)
+                    hwc2_primary_display = wrapped;
+            }
+            m_connectedDisplays.insert(display);
+        } else {
+            m_connectedDisplays.remove(display);
+        }
+        if (m_hotplugCallback)
+            m_hotplugCallback(display, connected, primaryDisplay);
+    }, Qt::QueuedConnection);
 }
 
 // #endif /* HWC_PLUGIN_HAVE_HWCOMPOSER1_API */

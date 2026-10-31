@@ -49,6 +49,7 @@
 #include <qpa/qplatformintegration.h>
 #include <qpa/qplatformnativeinterface.h>
 #include <qpa/qplatformscreen.h>
+#include <QHash>
 
 QT_BEGIN_NAMESPACE
 
@@ -93,11 +94,16 @@ public:
     QPlatformTheme *createPlatformTheme(const QString &name) const;
 
 private:
+    void addDisplayScreen(uint64_t displayId);
+    void removeDisplayScreen(uint64_t displayId);
+
     HwComposerContext *mHwc;
     EGLDisplay mDisplay;
     QAbstractEventDispatcher *mEventDispatcher;
     QPlatformFontDatabase *mFontDb;
     QPlatformScreen *mScreen;
+    QHash<uint64_t, QEglFSScreen *> mScreens;
+    uint64_t mPrimaryDisplayId;
     QPlatformInputContext *mInputContext;
 };
 

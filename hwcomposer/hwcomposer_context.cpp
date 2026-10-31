@@ -51,12 +51,14 @@
 #include "hwcomposer_backend.h"
 
 #include <qcoreapplication.h>
+#include <utility>
 
 QT_BEGIN_NAMESPACE
 
 HwComposerContext::HwComposerContext()
     : info(NULL)
     , backend(NULL)
+    , m_primaryDisplayId(0)
     , display_off(false)
     , window_created(false)
     , fps(0)
@@ -64,6 +66,7 @@ HwComposerContext::HwComposerContext()
     // This actually opens the hwcomposer device
     backend = HwComposerBackend::create();
     HWC_PLUGIN_ASSERT_NOT_NULL(backend);
+    m_primaryDisplayId = backend->primaryDisplayId();
 
     fps = backend->refreshRate();
 
@@ -101,6 +104,70 @@ QSize HwComposerContext::screenSize() const
     return info->screenSize();
 }
 
+QSize HwComposerContext::screenSize(uint64_t displayId) const
+{
+    if (displayId == m_primaryDisplayId)
+        return info->screenSize();
+
+    int width = 0;
+    int height = 0;
+    float physicalWidth = 0;
+    float physicalHeight = 0;
+    if (!backend->getScreenSizesForDisplay(displayId, &width, &height,
+                                           &physicalWidth, &physicalHeight))
+        return QSize();
+    return QSize(width, height);
+}
+
+QSizeF HwComposerContext::physicalScreenSize(uint64_t displayId) const
+{
+    if (displayId == m_primaryDisplayId)
+        return info->physicalScreenSize();
+
+    int width = 0;
+    int height = 0;
+    float physicalWidth = 0;
+    float physicalHeight = 0;
+    if (!backend->getScreenSizesForDisplay(displayId, &width, &height,
+                                           &physicalWidth, &physicalHeight))
+        return QSizeF();
+    return QSizeF(physicalWidth, physicalHeight);
+}
+
+qreal HwComposerContext::refreshRate(uint64_t displayId) const
+{
+    return backend->refreshRateForDisplay(displayId);
+}
+
+void HwComposerContext::setDisplayPowerState(uint64_t displayId, bool on)
+{
+    if (displayId == m_primaryDisplayId)
+        sleepDisplay(!on);
+    else
+        backend->setPowerStateForDisplay(displayId, on);
+}
+
+uint64_t HwComposerContext::primaryDisplayId() const
+{
+    return m_primaryDisplayId;
+}
+
+bool HwComposerContext::hasDisplay(uint64_t displayId) const
+{
+    return !screenSize(displayId).isEmpty();
+}
+
+void HwComposerContext::setHotplugCallback(
+    std::function<void(uint64_t, bool, bool)> callback)
+{
+    backend->setHotplugCallback(std::move(callback));
+}
+
+QList<uint64_t> HwComposerContext::connectedDisplayIds() const
+{
+    return backend->connectedDisplayIds();
+}
+
 QSurfaceFormat HwComposerContext::surfaceFormatFor(const QSurfaceFormat &inputFormat) const
 {
     QSurfaceFormat newFormat = inputFormat; 
@@ -119,17 +186,18 @@ QSurfaceFormat HwComposerContext::surfaceFormatFor(const QSurfaceFormat &inputFo
     return newFormat;
 }
 
-EGLNativeWindowType HwComposerContext::createNativeWindow(const QSurfaceFormat &format)
+EGLNativeWindowType HwComposerContext::createNativeWindow(const QSurfaceFormat &format,
+                                                          uint64_t displayId,
+                                                          QSize size)
 {
     Q_UNUSED(format);
 
-    if (window_created) {
+    if (window_created && !backend->supportsMultipleDisplays()) {
         HWC_PLUGIN_FATAL("There can only be one window, someone tried to create more.");
     }
 
     window_created = true;
-    QSize size = screenSize();
-    return backend->createWindow(size.width(), size.height());
+    return backend->createWindowForDisplay(displayId, size.width(), size.height());
 }
 
 void HwComposerContext::destroyNativeWindow(EGLNativeWindowType window)
