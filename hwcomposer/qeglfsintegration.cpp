@@ -132,6 +132,7 @@ QEglFSIntegration::QEglFSIntegration()
 #else
     QWindowSystemInterface::handleScreenAdded(mScreen);
 #endif
+    QEglFSScreen::addSibling(static_cast<QEglFSScreen *>(mScreen));
 
     mHwc->setHotplugCallback([this](uint64_t displayId, bool connected,
                                     bool primaryDisplay) {
@@ -159,6 +160,7 @@ QEglFSIntegration::~QEglFSIntegration()
         if (displayId != mPrimaryDisplayId)
             removeDisplayScreen(displayId);
     }
+    QEglFSScreen::removeSibling(static_cast<QEglFSScreen *>(mScreen));
 #if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
     QWindowSystemInterface::handleScreenRemoved(mScreen);
 #elif QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)
@@ -193,6 +195,7 @@ void QEglFSIntegration::addDisplayScreen(uint64_t displayId)
 #else
     QWindowSystemInterface::handleScreenAdded(screen);
 #endif
+    QEglFSScreen::addSibling(screen);
 }
 
 void QEglFSIntegration::removeDisplayScreen(uint64_t displayId)
@@ -201,6 +204,7 @@ void QEglFSIntegration::removeDisplayScreen(uint64_t displayId)
     if (!screen)
         return;
 
+    QEglFSScreen::removeSibling(screen);
 #if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
     QWindowSystemInterface::handleScreenRemoved(screen);
 #elif QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)

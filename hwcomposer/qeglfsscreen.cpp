@@ -56,6 +56,8 @@
 
 QT_BEGIN_NAMESPACE
 
+QList<QPlatformScreen *> QEglFSScreen::s_siblings;
+
 QEglFSScreen::QEglFSScreen(HwComposerContext *hwc, EGLDisplay dpy,
                            uint64_t displayId, QPoint position)
     : m_hwc(hwc)
@@ -75,6 +77,7 @@ QEglFSScreen::QEglFSScreen(HwComposerContext *hwc, EGLDisplay dpy,
 
 QEglFSScreen::~QEglFSScreen()
 {
+    removeSibling(this);
 #ifdef WITH_SENSORS
     if (m_orientationSensor) {
         m_orientationSensor->stop();
@@ -91,6 +94,25 @@ void QEglFSScreen::onStarted()
     }
 }
 #endif
+
+QList<QPlatformScreen *> QEglFSScreen::virtualSiblings() const
+{
+    QList<QPlatformScreen *> siblings = s_siblings;
+    if (!siblings.contains(const_cast<QEglFSScreen *>(this)))
+        siblings.append(const_cast<QEglFSScreen *>(this));
+    return siblings;
+}
+
+void QEglFSScreen::addSibling(QEglFSScreen *screen)
+{
+    if (!s_siblings.contains(screen))
+        s_siblings.append(screen);
+}
+
+void QEglFSScreen::removeSibling(QEglFSScreen *screen)
+{
+    s_siblings.removeAll(screen);
+}
 
 QRect QEglFSScreen::geometry() const
 {

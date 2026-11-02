@@ -1,0 +1,110 @@
+diff --git a/hwcomposer/qeglfsintegration.cpp b/hwcomposer/qeglfsintegration.cpp
+index b24035b..e2e0d93 100644
+--- a/hwcomposer/qeglfsintegration.cpp
++++ b/hwcomposer/qeglfsintegration.cpp
+@@ -132,6 +132,7 @@ QEglFSIntegration::QEglFSIntegration()
+ #else
+     QWindowSystemInterface::handleScreenAdded(mScreen);
+ #endif
++    QEglFSScreen::addSibling(static_cast<QEglFSScreen *>(mScreen));
+ 
+     mHwc->setHotplugCallback([this](uint64_t displayId, bool connected,
+                                     bool primaryDisplay) {
+@@ -159,6 +160,7 @@ QEglFSIntegration::~QEglFSIntegration()
+         if (displayId != mPrimaryDisplayId)
+             removeDisplayScreen(displayId);
+     }
++    QEglFSScreen::removeSibling(static_cast<QEglFSScreen *>(mScreen));
+ #if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
+     QWindowSystemInterface::handleScreenRemoved(mScreen);
+ #elif QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)
+@@ -193,6 +195,7 @@ void QEglFSIntegration::addDisplayScreen(uint64_t displayId)
+ #else
+     QWindowSystemInterface::handleScreenAdded(screen);
+ #endif
++    QEglFSScreen::addSibling(screen);
+ }
+ 
+ void QEglFSIntegration::removeDisplayScreen(uint64_t displayId)
+@@ -201,6 +204,7 @@ void QEglFSIntegration::removeDisplayScreen(uint64_t displayId)
+     if (!screen)
+         return;
+ 
++    QEglFSScreen::removeSibling(screen);
+ #if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
+     QWindowSystemInterface::handleScreenRemoved(screen);
+ #elif QT_VERSION >= QT_VERSION_CHECK(5, 5, 0)
+diff --git a/hwcomposer/qeglfsscreen.cpp b/hwcomposer/qeglfsscreen.cpp
+index 1ea3dec..f9c9cc5 100644
+--- a/hwcomposer/qeglfsscreen.cpp
++++ b/hwcomposer/qeglfsscreen.cpp
+@@ -56,6 +56,8 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
++QList<QPlatformScreen *> QEglFSScreen::s_siblings;
++
+ QEglFSScreen::QEglFSScreen(HwComposerContext *hwc, EGLDisplay dpy,
+                            uint64_t displayId, QPoint position)
+     : m_hwc(hwc)
+@@ -75,6 +77,7 @@ QEglFSScreen::QEglFSScreen(HwComposerContext *hwc, EGLDisplay dpy,
+ 
+ QEglFSScreen::~QEglFSScreen()
+ {
++    removeSibling(this);
+ #ifdef WITH_SENSORS
+     if (m_orientationSensor) {
+         m_orientationSensor->stop();
+@@ -92,6 +95,25 @@ void QEglFSScreen::onStarted()
+ }
+ #endif
+ 
++QList<QPlatformScreen *> QEglFSScreen::virtualSiblings() const
++{
++    QList<QPlatformScreen *> siblings = s_siblings;
++    if (!siblings.contains(const_cast<QEglFSScreen *>(this)))
++        siblings.append(const_cast<QEglFSScreen *>(this));
++    return siblings;
++}
++
++void QEglFSScreen::addSibling(QEglFSScreen *screen)
++{
++    if (!s_siblings.contains(screen))
++        s_siblings.append(screen);
++}
++
++void QEglFSScreen::removeSibling(QEglFSScreen *screen)
++{
++    s_siblings.removeAll(screen);
++}
++
+ QRect QEglFSScreen::geometry() const
+ {
+     return QRect(m_position, m_hwc->screenSize(m_displayId));
+diff --git a/hwcomposer/qeglfsscreen.h b/hwcomposer/qeglfsscreen.h
+index 0f19a1a..5377fb3 100644
+--- a/hwcomposer/qeglfsscreen.h
++++ b/hwcomposer/qeglfsscreen.h
+@@ -82,6 +82,13 @@ public:
+     EGLDisplay display() const { return m_dpy; }
+     uint64_t displayId() const { return m_displayId; }
+ 
++    // All screens share one virtual desktop. Qt clamps the mouse pointer to
++    // the primary screen's virtualGeometry(), which is built from this list.
++    QList<QPlatformScreen *> virtualSiblings() const override;
++    // Call after the screen was announced to Qt, and before it is removed.
++    static void addSibling(QEglFSScreen *screen);
++    static void removeSibling(QEglFSScreen *screen);
++
+     qreal refreshRate() const;
+ 
+ #ifdef WITH_SENSORS
+@@ -96,6 +103,8 @@ public:
+ #endif
+ 
+ private:
++    static QList<QPlatformScreen *> s_siblings;
++
+     HwComposerContext *m_hwc;
+     uint64_t m_displayId;
+     QPoint m_position;

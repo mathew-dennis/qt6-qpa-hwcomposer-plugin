@@ -82,6 +82,13 @@ public:
     EGLDisplay display() const { return m_dpy; }
     uint64_t displayId() const { return m_displayId; }
 
+    // All screens share one virtual desktop. Qt clamps the mouse pointer to
+    // the primary screen's virtualGeometry(), which is built from this list.
+    QList<QPlatformScreen *> virtualSiblings() const override;
+    // Call after the screen was announced to Qt, and before it is removed.
+    static void addSibling(QEglFSScreen *screen);
+    static void removeSibling(QEglFSScreen *screen);
+
     qreal refreshRate() const;
 
 #ifdef WITH_SENSORS
@@ -96,6 +103,8 @@ public:
 #endif
 
 private:
+    static QList<QPlatformScreen *> s_siblings;
+
     HwComposerContext *m_hwc;
     uint64_t m_displayId;
     QPoint m_position;
