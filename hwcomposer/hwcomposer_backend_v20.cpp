@@ -127,6 +127,8 @@ class HWC2Window : public HWComposerNativeWindow
                 hwc2_compat_display_t *display, hwc2_compat_layer_t *layer);
         ~HWC2Window();
         void set();
+        // The display went away: its layer is already gone, never touch it.
+        void abandon() { hwcDisplay = nullptr; layer = nullptr; }
 };
 
 HWC2Window::HWC2Window(unsigned int width, unsigned int height,
@@ -149,7 +151,8 @@ HWC2Window::~HWC2Window()
 {
     if (lastPresentFence != -1)
         close(lastPresentFence);
-    hwc2_compat_display_destroy_layer(hwcDisplay, layer);
+    if (hwcDisplay && layer)
+        hwc2_compat_display_destroy_layer(hwcDisplay, layer);
 }
 
 void HWC2Window::present(HWComposerNativeWindowBuffer *buffer)
@@ -158,6 +161,9 @@ void HWC2Window::present(HWComposerNativeWindowBuffer *buffer)
     uint32_t numRequests = 0;
     int displayId = 0;
     hwc2_error_t error = HWC2_ERROR_NONE;
+
+    if (!hwcDisplay) // display was unplugged
+        return;
 
     QSystraceEvent trace("graphics", "QPA::present");
 
@@ -286,6 +292,8 @@ HwComposerBackend_v20::createWindow(int width, int height)
 EGLNativeWindowType
 HwComposerBackend_v20::createWindowForDisplay(uint64_t displayId, int width, int height)
 {
+    if (!m_connectedDisplays.contains(displayId))
+        return EGLNativeWindowType{};
     hwc2_compat_display_t *display = displayForId(displayId);
     if (!display)
         return EGLNativeWindowType{};
@@ -303,6 +311,7 @@ HwComposerBackend_v20::createWindowForDisplay(uint64_t displayId, int width, int
     HWC2Window *hwc_win = new HWC2Window(width, height,
                                          HAL_PIXEL_FORMAT_RGBA_8888,
                                          display, layer);
+    m_windows.insert(displayId, hwc_win);
 
     return (EGLNativeWindowType) static_cast<ANativeWindow *>(hwc_win);
 }
@@ -310,7 +319,14 @@ HwComposerBackend_v20::createWindowForDisplay(uint64_t displayId, int width, int
 void
 HwComposerBackend_v20::destroyWindow(EGLNativeWindowType window)
 {
-    delete reinterpret_cast<HWC2Window *>(window);
+    HWC2Window *hwc_win = reinterpret_cast<HWC2Window *>(window);
+    for (auto it = m_windows.begin(); it != m_windows.end(); ++it) {
+        if (it.value() == hwc_win) {
+            m_windows.erase(it);
+            break;
+        }
+    }
+    delete hwc_win;
 }
 
 void
@@ -532,6 +548,13 @@ void HwComposerBackend_v20::onHotplugReceived(int32_t /*sequenceId*/,
             m_connectedDisplays.insert(display);
         } else {
             m_connectedDisplays.remove(display);
+            // The display and its layers no longer exist; make sure the
+            // windows that used them never touch them again (including
+            // when they are destroyed later).
+            const QList<HWC2Window *> windows = m_windows.values(display);
+            for (HWC2Window *window : windows)
+                window->abandon();
+            m_windows.remove(display);
         }
         if (m_hotplugCallback)
             m_hotplugCallback(display, connected, primaryDisplay);
