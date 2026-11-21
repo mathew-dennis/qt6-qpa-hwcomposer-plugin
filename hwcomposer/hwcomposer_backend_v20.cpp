@@ -326,9 +326,10 @@ HwComposerBackend_v20::destroyWindow(EGLNativeWindowType window)
             break;
         }
     }
-    // HWComposerNativeWindow (ANativeWindow) is refcounted by EGL; drop our
-    // reference instead of calling `delete` directly.
-    hwc_win->common.decRef(&hwc_win->common);
+    // Like HwComposerBackend_v0/v10/v11, do not delete HWComposerNativeWindow
+    // here: libhybris's BaseNativeWindow does not populate common.decRef, and
+    // the Android EGL driver still touches the ANativeWindow struct after
+    // eglDestroySurface.
 }
 
 void
