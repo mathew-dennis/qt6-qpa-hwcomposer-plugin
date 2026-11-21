@@ -212,6 +212,17 @@ EGLNativeWindowType HwComposerContext::createNativeWindow(const QSurfaceFormat &
     return window;
 }
 
+void HwComposerContext::forgetDisplayWindows(uint64_t displayId)
+{
+    m_windowDisplays.remove(displayId);
+    for (auto it = m_windowToDisplay.begin(); it != m_windowToDisplay.end();) {
+        if (it.value() == displayId)
+            it = m_windowToDisplay.erase(it);
+        else
+            ++it;
+    }
+}
+
 void HwComposerContext::destroyNativeWindow(EGLNativeWindowType window)
 {
     // Display id 0 is a valid (primary) id, so key off the map itself

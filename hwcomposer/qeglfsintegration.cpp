@@ -204,6 +204,7 @@ void QEglFSIntegration::removeDisplayScreen(uint64_t displayId)
     if (!screen)
         return;
 
+    mHwc->forgetDisplayWindows(displayId);
     QEglFSScreen::removeSibling(screen);
 #if QT_VERSION >= QT_VERSION_CHECK(5, 13, 0)
     QWindowSystemInterface::handleScreenRemoved(screen);

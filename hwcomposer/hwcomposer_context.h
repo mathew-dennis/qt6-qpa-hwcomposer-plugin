@@ -100,6 +100,9 @@ public:
     EGLNativeWindowType createNativeWindow(const QSurfaceFormat &format,
                                           uint64_t displayId, QSize size);
     void destroyNativeWindow(EGLNativeWindowType window);
+    // The display is gone: allow a new window when it comes back, even if the
+    // old window object has not been destroyed yet.
+    void forgetDisplayWindows(uint64_t displayId);
 
     void swapToWindow(QEglFSContext *context, QPlatformSurface *surface);
 
