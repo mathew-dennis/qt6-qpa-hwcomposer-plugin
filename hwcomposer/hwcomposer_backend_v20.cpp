@@ -320,6 +320,7 @@ void
 HwComposerBackend_v20::destroyWindow(EGLNativeWindowType window)
 {
     HWC2Window *hwc_win = reinterpret_cast<HWC2Window *>(window);
+    qWarning("QPA-HWC: destroyWindow %p tracked=%d", (void *)hwc_win, int(m_windows.values().contains(hwc_win)));
     for (auto it = m_windows.begin(); it != m_windows.end(); ++it) {
         if (it.value() == hwc_win) {
             m_windows.erase(it);
@@ -552,6 +553,7 @@ void HwComposerBackend_v20::onHotplugReceived(int32_t /*sequenceId*/,
             // windows that used them never touch them again (including
             // when they are destroyed later).
             const QList<HWC2Window *> windows = m_windows.values(display);
+            qWarning("QPA-HWC: display %llu disconnected, abandoning %d window(s)", (unsigned long long)display, int(windows.size()));
             for (HWC2Window *window : windows)
                 window->abandon();
             m_windows.remove(display);
