@@ -53,11 +53,12 @@
 #include <QObject>
 #include <QBasicTimer>
 #include <QHash>
+#include <QPointer>
 #include <QSet>
+#include <QWindow>
 
 class HwcProcs_v20;
 class HWC2Window;
-class QWindow;
 
 class HwComposerBackend_v20 : public QObject, public HwComposerBackend {
 public:
@@ -104,7 +105,7 @@ private:
     bool m_displayOff;
     QBasicTimer m_deliverUpdateTimeout;
     QBasicTimer m_vsyncTimeout;
-    QSet<QWindow *> m_pendingUpdate;
+    QList<QPointer<QWindow>> m_pendingUpdate;
     HwcProcs_v20 *procs;
 };
 

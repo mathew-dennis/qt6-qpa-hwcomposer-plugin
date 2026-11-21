@@ -320,14 +320,15 @@ void
 HwComposerBackend_v20::destroyWindow(EGLNativeWindowType window)
 {
     HWC2Window *hwc_win = reinterpret_cast<HWC2Window *>(window);
-    qWarning("QPA-HWC: destroyWindow %p tracked=%d", (void *)hwc_win, int(m_windows.values().contains(hwc_win)));
     for (auto it = m_windows.begin(); it != m_windows.end(); ++it) {
         if (it.value() == hwc_win) {
             m_windows.erase(it);
             break;
         }
     }
-    delete hwc_win;
+    // HWComposerNativeWindow (ANativeWindow) is refcounted by EGL; drop our
+    // reference instead of calling `delete` directly.
+    hwc_win->common.decRef(&hwc_win->common);
 }
 
 void
@@ -500,9 +501,11 @@ bool HwComposerBackend_v20::event(QEvent *e)
 void HwComposerBackend_v20::handleVSyncEvent()
 {
     QSystraceEvent trace("graphics", "QPA::handleVsync");
-    QSet<QWindow *> pendingWindows = m_pendingUpdate;
+    const QList<QPointer<QWindow>> pendingWindows = m_pendingUpdate;
     m_pendingUpdate.clear();
-    foreach (QWindow *w, pendingWindows) {
+    for (const QPointer<QWindow> &w : pendingWindows) {
+        if (!w)
+            continue;
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 12, 0))
         QPlatformWindow *platformWindow = w->handle();
         if (!platformWindow)
@@ -528,7 +531,8 @@ bool HwComposerBackend_v20::requestUpdate(QEglFSWindow *window)
         hwc2_compat_display_set_vsync_enabled(hwc2_primary_display, HWC2_VSYNC_ENABLE);
     }
     m_vsyncTimeout.start(50, this);
-    m_pendingUpdate.insert(window->window());
+    if (!m_pendingUpdate.contains(window->window()))
+        m_pendingUpdate.append(window->window());
     return true;
 }
 
