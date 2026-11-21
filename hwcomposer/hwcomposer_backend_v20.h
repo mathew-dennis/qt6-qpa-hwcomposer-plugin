@@ -56,6 +56,7 @@
 #include <QSet>
 
 class HwcProcs_v20;
+class HWC2Window;
 class QWindow;
 
 class HwComposerBackend_v20 : public QObject, public HwComposerBackend {
@@ -97,6 +98,7 @@ private:
     hwc2_compat_display_t* hwc2_primary_display;
     QHash<uint64_t, hwc2_compat_display_t *> hwc2_displays;
     QSet<uint64_t> m_connectedDisplays;
+    QMultiHash<uint64_t, HWC2Window *> m_windows;
     HotplugCallback m_hotplugCallback;
 
     bool m_displayOff;
