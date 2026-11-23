@@ -47,6 +47,7 @@
 #include "hwcomposer_context.h"
 
 #include "qeglfscontext.h"
+#include "qeglfswindow.h"
 #include "hwcomposer_screeninfo.h"
 #include "hwcomposer_backend.h"
 
@@ -234,9 +235,17 @@ void HwComposerContext::destroyNativeWindow(EGLNativeWindowType window)
 
 void HwComposerContext::swapToWindow(QEglFSContext *context, QPlatformSurface *surface)
 {
+    // display_off tracks the primary display only; windows on external
+    // displays keep presenting while it is off.
     if (display_off) {
-        qWarning("Swap requested while display is off");
-        return;
+        const EGLNativeWindowType nativeWindow =
+            reinterpret_cast<EGLNativeWindowType>(
+                static_cast<QEglFSWindow *>(surface)->winId());
+        if (m_windowToDisplay.value(nativeWindow, m_primaryDisplayId)
+            == m_primaryDisplayId) {
+            qWarning("Swap requested while display is off");
+            return;
+        }
     }
 
     EGLDisplay egl_display = context->eglDisplay();
