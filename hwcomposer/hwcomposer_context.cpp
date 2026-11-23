@@ -238,9 +238,9 @@ void HwComposerContext::swapToWindow(QEglFSContext *context, QPlatformSurface *s
     // display_off tracks the primary display only; windows on external
     // displays keep presenting while it is off.
     if (display_off) {
+        // winId() is WId(m_window); cast back (integer or pointer type).
         const EGLNativeWindowType nativeWindow =
-            reinterpret_cast<EGLNativeWindowType>(
-                static_cast<QEglFSWindow *>(surface)->winId());
+            (EGLNativeWindowType)static_cast<QEglFSWindow *>(surface)->winId();
         if (m_windowToDisplay.value(nativeWindow, m_primaryDisplayId)
             == m_primaryDisplayId) {
             qWarning("Swap requested while display is off");
